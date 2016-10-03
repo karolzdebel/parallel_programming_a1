@@ -101,20 +101,13 @@ int main(int argc,char **argv){
 	}
 
 	file = fopen(argv[1],"r");
-
 	index = startPositions(file,workerCount);
 
-	printf("Starting positions of %d workers: ",workerCount);
-	printf("Worker 0: 0\n");
-	for (int i=0;i<workerCount;i++){
-		printf("Worker %d: %d\n",i,index[i]/(SIZE_RECORD+SIZE_EOL));
-	}
-	printf("\n");
-
+	dataset = partDataset(file,SIZE_HEADER+SIZE_EOL,countRecords(file));
+	printf("Found %d collisions in %d records.\n",dataset->colNum,countRecords(file));
+	
 	fclose(file);
 
-	//dataset = partDataset(file,SIZE_HEADER+SIZE_EOL,countRecords(file));
-	//printf("Found %d collisions in %d records.\n",dataset->colNum,countRecords(file));
 	return 0;
 }
 
