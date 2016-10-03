@@ -41,33 +41,13 @@ typedef struct Dataset {
 	Record **records;		//Array of records addresses
 } Dataset;
 
-
 /*********************************************************************
  * FUNCTION NAME: getDataset
- * PURPOSE: Stores record data and collision indexes.
+ * PURPOSE: Assigns specified number of workers to parse data from
+ *			the file and return it.
  * ARGUMENTS: . File to be read from.
- *		      . Position of the file to start reading from.
- *			  . Length of reading portion.
+ *		      . Number of workers to do the job.
  * RETURNS: Address of Dataset containing all records found in the 
- *			portion provided.
+ *			file.
  *********************************************************************/
-Dataset *getDataset(FILE *file, int startPos, int length);
-
-/*********************************************************************
- * FUNCTION NAME: getRecord
- * PURPOSE: Stores record data from a line retrieved from data file.
- * ARGUMENTS: . Line of text from data file.
- * RETURNS: Record containing parsed data.
- *********************************************************************/
-Record *getRecord(char *line);
-
-/*********************************************************************
- * FUNCTION NAME: sameCol
- * PURPOSE: Checks if two records are part of the same collion.
- * ARGUMENTS: . Record being compared.
- *			  . Record being compared.
- * RETURNS: True if the records are part of the same collision,
- *		    false otherwise.
- *********************************************************************/
-bool sameCol(char *rec1, char *rec2);
-
+Dataset *getDataset(FILE *file, int workerCount);
