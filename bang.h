@@ -1,9 +1,21 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <string.h>
+#include <time.h>
 
 #define SIZE_RECORD 61
 #define SIZE_HEADER 145
+#define SIZE_EOL 2
+#define LENGTH_COLL 32			//Length of characters representing collision level data
+#define COL_COUNT 22
+#define COL_CYEAR 1
+#define COL_MNTH 2
+#define COL_DAY 3
+#define COL_SEV 5
+#define COL_LOC 8
+#define COL_VYEAR 15
+#define COL_SEX 17
 
 typedef struct Date Date;
 typedef struct Date {
@@ -15,8 +27,8 @@ typedef struct Date {
 typedef struct Record Record;
 typedef struct Record {
 	Date date;			//Date the collision occured
-	char *location;		//Code of accident location 1-12 and QQ
-	char *gender;		//Gender of individual involved
+	char location[2];		//Code of accident location 1-12 and QQ
+	char gender;		//Gender of individual involved
 	int vehYear;		//Vehicle year involved in collision
 	bool death;			//Whether the person involved in the collision died
 } Record;
@@ -57,5 +69,5 @@ Record *getRecord(char *line);
  * RETURNS: True if the records are part of the same collision,
  *		    false otherwise.
  *********************************************************************/
-bool sameCol(Record rec1, Record rec2);
+bool sameCol(char *rec1, char *rec2);
 
