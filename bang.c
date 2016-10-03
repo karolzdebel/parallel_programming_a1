@@ -273,6 +273,8 @@ Dataset *partDataset(FILE *file, int startPos, int readCount){
 		if (i > 0){
 			strcpy(prevLine,line);
 		}
+		/*Set collision to one on first read*/
+		else{ dataset->colNum = 1; }
 
 		/*Read next line of record data*/
 		fread((void*)line,1,SIZE_RECORD+SIZE_EOL,file);
