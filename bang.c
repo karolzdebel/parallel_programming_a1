@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include "pilot.h"
 
+#define DEBUG
 #define SIZE_RECORD 61          //Length of a record
 #define SIZE_HEADER 145         //Lenght of a header
 #define SIZE_EOL 2              //Amount of EOL characters in each line
@@ -410,7 +411,17 @@ int workerJob(int num, void *fileName){
 	Dataset *dataset;
 	int numPos,*position,length,i;
 	
+	#ifdef DEBUG
+	printf("Worker(%d) has been created and received filename: %s as 2nd argument\n"
+		,num+1,(char*)fileName);
+	#endif
+
 	PI_Read(toWorker[num],"%^d",&numPos, &position);
+	
+	#ifdef DEBUG
+	printf("Worker(%d) PI_Read array storing position to begin reading.\n",num+1);
+	#endif
+
 	file = fopen( (char*)fileName, "r");
 
 	length = readLength(num,W,position,fileSize(file));		
@@ -420,8 +431,17 @@ int workerJob(int num, void *fileName){
 	}
 	fclose(file);
 
+	#ifdef DEBUG
+	printf("Worker(%d) finished reading file. PI_Write is being called on fromWorker[%d] channel with %d records and %d collisions.\n"
+		,num+1,num,dataset->recNum,dataset->colNum);
+	#endif
+
 	/*Write amount of records to master*/
 	PI_Write(fromWorker[num], "%d %d", dataset->recNum, dataset->colNum);	
+
+	#ifdef DEBUG
+	printf("Worker(%d) exiting.\n",num+1);
+	#endif
 	
 	return 0; 
 }
@@ -441,7 +461,7 @@ int main(int argc,char **argv){
 		return(EXIT_FAILURE);
 	}		
 	recReal = (fileSize(file)-SIZE_HEADER-SIZE_EOL)/(SIZE_RECORD+SIZE_EOL);
-
+	
 	/*Create each worker and channels*/
 	for (i=0;i<W;i++){
 
@@ -458,20 +478,36 @@ int main(int argc,char **argv){
 	position = startPositions(file,W);
 	fclose(file);
 
+	#ifdef DEBUG
+	printf("PI_MAIN PI_Broadcast array of workers file indexes to toAllWorkers bundle.\n");
+	#endif 
+
 	PI_Broadcast(toAllWorkers,"%^d",W,position);
 
 	recTotal = colFound = 0;
 	/*Get number of records found by all workers
 	and compare to number of records found by main*/
 	for (i=0;i<W;i++){
+
+		#ifdef DEBUG
+		printf("PI_Main calling PI_Select on fromAllWorkers expecting record and collision numbers.\n");
+		#endif
+
 		done = PI_Select(fromAllWorkers);
 		PI_Read(fromWorker[done],"%d %d", &recFound,&colFound);
+
+		#ifdef DEBUG
+		printf("PI_Main received a count of %d records and %d collision from worker %d\n",recFound,colFound,done+1);
+		#endif
+
 		colTotal += colFound;
 		recTotal += recFound;
 	}
 
-	printf("RECORDS FOUND - Workers: %d\tRecords(Size of File): %d\n",recTotal,recReal);
-	printf("COLLISIONS FOUND: %d\n",colTotal);
+	#ifdef DEBUG	
+	printf("PI_Main calculated %d records present in file based on file size.\n",recReal);
+	printf("PI_Main received a total of %d records and %d collisions from %d workers.\n",recTotal,colTotal,W);
+	#endif
 
 	PI_StopMain(0);
 
