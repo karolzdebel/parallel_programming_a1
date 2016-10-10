@@ -10,7 +10,7 @@
 #define SIZE_RECORD 61          //Length of a record
 #define SIZE_HEADER 145         //Lenght of a header
 #define SIZE_EOL 2              //Amount of EOL characters in each line
-#define LENGTH_COLL 32          //Length of characters representing collision level data
+#define LENGTH_COLL 32			//Characters representing collision level data
 #define COL_COUNT 22            //Amount of columns found in each record
 #define COL_CYEAR 1             //Collision year
 #define COL_MNTH 2              //Collision month
@@ -19,6 +19,8 @@
 #define COL_LOC 8               //Collision location
 #define COL_VYEAR 15            //Vehicle year involved in collision
 #define COL_SEX 17              //Gender of individual involved in collision
+#define FATA 0
+#define COLL 1
 
 typedef struct Date Date;
 typedef struct Date {
@@ -44,6 +46,14 @@ typedef struct Dataset {
 	Record **records;           //Array of records addresses
 } Dataset;
 
+
+typedef struct WorstMonth WorstMonth;
+typedef struct WorstMonth {
+	Date total;
+	Date totalF;
+	int fatal[14];
+	int nonFatal[14];
+}WorstMonth;
 
 /******************HELPER FUNCTION DOCUMENTATION*********************/
 /*********************************************************************
@@ -160,7 +170,7 @@ static void createDataset(Dataset **dataset);
 /*********************************************************************/
 
 static bool sameCol(char *rec1, char *rec2){
-	return (strncmp(rec1,rec2,LENGTH_COLL) == 0);
+	return (strncmp(rec1,rec2,LENGTH_COLL) == 0);	
 }
 
 static int recCount(Dataset *dataset){
@@ -211,32 +221,29 @@ static void createDataset(Dataset **dataset){
 	(*dataset)->records = NULL; 
 }
 
-static void addRecord(Dataset *dataset, Record *record){
-	Record **arr = dataset->records;
-
+static void addRecord(Dataset *dataset, Record *record){	
 	dataset->recNum++;
 	
 	/*Allocate more memory for new record*/
-	if (arr != NULL){
-		arr = realloc(arr,sizeof(Record*)*recCount(dataset));
-		arr[recCount(dataset)-1] = record;
+	if (dataset->records != NULL){
+		dataset->records = realloc(dataset->records,sizeof(Record*)*recCount(dataset));
+		dataset->records[recCount(dataset)-1] = record;
 	}
 	else{
-		arr = malloc(sizeof(Record*));
-		arr[0] = record;
+		dataset->records = malloc(sizeof(Record*));
+		dataset->records[0] = record;
 	}
 }
 
 static void addIndex(Dataset *dataset, int index){
-	int *arr = dataset->collisionIndex;
 
-	if (arr != NULL){
-		arr = realloc(arr,sizeof(int)*colCount(dataset));
-		arr[colCount(dataset)-1] = index;
+	if (dataset->collisionIndex != NULL){
+		dataset->collisionIndex = realloc(dataset->collisionIndex,sizeof(int)*colCount(dataset));
+		dataset->collisionIndex[colCount(dataset)-1] = index-1;
 	}
 	else{
-		arr = malloc(sizeof(int));
-		arr[0] = index;
+		dataset->collisionIndex = malloc(sizeof(int));
+		dataset->collisionIndex[0] = index-1;
 	}
 }
 
@@ -338,6 +345,41 @@ static Record *getRecord(char *recLine){
 
 	return record;
 }
+int ***collEachMonth(Dataset *dataset){
+	int ***tally;
+	int year,month;
+	int i,j,index;
+
+	tally = malloc(sizeof(int**)*14);
+	for (i=0;i<14;i++){
+
+		tally[i] = malloc(sizeof(int*)*12);
+		for (j=0;j<12;j++){
+			tally[i][j] = malloc(sizeof(int)*2);
+			tally[i][j][0] = 0;
+			tally[i][j][1] = 0;	
+		}
+	}
+	//Count number of fatalities in each month and number of collisions in each month
+	
+	//Go through each collision record index
+		//Add one to  tally[YEAR][MONTH][COLL]
+		//Add one to tally[YEAR][MONTH][FATA] if fatality occurred
+	for (i=0;i<dataset->colNum;i++){
+		index = dataset->collisionIndex[i];
+		
+		month = dataset->records[index]->date.month;
+		year = dataset->records[index]->date.year;
+
+		if (month > 0 && month < 13){	
+			tally[year-1999][month-1][0]++;
+			if (dataset->records[index]->death){
+				tally[year-1999][month-1][1]++;
+			}
+		}	
+	}
+	return tally;
+}
 
 static Dataset *partDataset(FILE *file, int startPos, int readLength){
 	Dataset *dataset = NULL;
@@ -383,6 +425,9 @@ static Dataset *partDataset(FILE *file, int startPos, int readLength){
 				addIndex(dataset, recCount(dataset));
 			}
 		}
+		else{
+			addIndex(dataset,1);
+		}
 	}  
 	return dataset;
 }
@@ -397,7 +442,43 @@ static int readLength(int workerNum, int workerCount, int position[], int fileSi
 	}		
 }
 
-#define W 7
+WorstMonth *findMax(int arr[14][12][2]){
+	int i,j,index=0,max=0;
+	int maxF=0,indexF=0,maxFAll=0,maxAllF=0,maxAll=0;
+	int indexYear=0,indexMonth=0;
+	WorstMonth *worst = malloc(sizeof(WorstMonth));
+	
+	for (j=0;j<14;j++){
+		max = 0;
+		maxF = 0;
+		for (i=0;i<12;i++){
+			/*Check for worst non fatal injury month*/
+			if (arr[j][i][0] > max){
+				worst->nonFatal[j] = i+1;
+				max = arr[j][i][0];
+			}
+			/*Check for worst fatal injury month*/
+			if (arr[j][i][1] > maxF){
+				worst->fatal[j] = i+1;
+				maxF = arr[j][i][1];
+			}
+			if (arr[j][i][0] > maxAll){
+				maxAll = arr[j][i][0];
+				worst->total.year = j+1999;
+				worst->total.month = i+1;
+			}
+			if (arr[j][i][1] > maxAllF){
+				maxAllF = arr[j][i][1];
+				worst->totalF.year = j+1999;
+				worst->totalF.month = i+1;
+			}
+		}
+	}
+
+	return worst;
+}
+
+#define W 6
 
 PI_PROCESS *worker[W];
 PI_CHANNEL *toWorker[W];
@@ -409,17 +490,19 @@ PI_BUNDLE *fromAllWorkers;
 int workerJob(int num, void *fileName){
 	FILE *file;
 	Dataset *dataset;
-	int numPos,*position,length,i;
+	int i,j,queryNum,curQuery;
+	int numPos,*position,length;
+	int ***colls;
 	
 	#ifdef DEBUG
-	printf("Worker(%d) has been created and received filename: %s as 2nd argument\n"
+	printf("Worker(%d): Created and received filename: %s as 2nd argument\n"
 		,num+1,(char*)fileName);
 	#endif
 
 	PI_Read(toWorker[num],"%^d",&numPos, &position);
 	
 	#ifdef DEBUG
-	printf("Worker(%d) PI_Read array storing position to begin reading.\n",num+1);
+	printf("Worker(%d): Called PI_Read on toWorker[%d](Channel) and received file index from master.\n",num+1,num);
 	#endif
 
 	file = fopen( (char*)fileName, "r");
@@ -432,12 +515,47 @@ int workerJob(int num, void *fileName){
 	fclose(file);
 
 	#ifdef DEBUG
-	printf("Worker(%d) finished reading file. PI_Write is being called on fromWorker[%d] channel with %d records and %d collisions.\n"
+	printf("Worker(%d): Finished reading file, data needs to be sent to master(PI_Main). Calling PI_Write on fromWorker[%d](Channel) with %d records and %d collisions\n"
 		,num+1,num,dataset->recNum,dataset->colNum);
 	#endif
 
 	/*Write amount of records to master*/
 	PI_Write(fromWorker[num], "%d %d", dataset->recNum, dataset->colNum);	
+
+	/*Get the first query and the number of queries*/
+	PI_Read(toWorker[num],"%d %d",&queryNum,&curQuery);
+	printf("first query: %d num queries: %d\n",curQuery,queryNum);
+	for (i=0;i<queryNum;i++){
+		/*Perform certain calculation based on query*/
+		switch(curQuery){
+			case 1:
+				/*Write amount of collisions found each month*/
+				colls = collEachMonth(dataset);
+				for (i=0;i<14;i++){
+					for (j=0;j<12;j++){
+						PI_Write(fromWorker[num], "%d %d %^d",i+1,j+1,2,colls[i][j]);
+					}
+				}	
+				break;
+			case 2:
+
+				break;
+			case 3:
+
+				break;
+			case 4:
+
+				break;
+			case 5:
+
+				break;
+		}
+		/*Get the next query unless last iteration*/
+		/*if (i!= queryNum-1){
+			PI_Read(toWorker[num],"%d %d",&queryNum,&curQuery);
+
+		}*/
+	}	
 
 	#ifdef DEBUG
 	printf("Worker(%d) exiting.\n",num+1);
@@ -448,9 +566,12 @@ int workerJob(int num, void *fileName){
 
 int main(int argc,char **argv){
 	FILE *file;
+	WorstMonth *worst;
+	int *colls,year,month,size;
 	int *position,length[W];
-	int N,i,done;
+	int N,i,j,k,done,queryNum;
 	int recFound, recTotal,recReal,colFound,colTotal;
+	int colAmount[14][12][2];
 
 	/*Configure pilot*/	
 	N = PI_Configure(&argc,&argv);
@@ -479,7 +600,7 @@ int main(int argc,char **argv){
 	fclose(file);
 
 	#ifdef DEBUG
-	printf("PI_MAIN PI_Broadcast array of workers file indexes to toAllWorkers bundle.\n");
+	printf("PI_Main(Master): Broadcasting(PI_Broadcast) array of file indexes to toAllWorkers(BUNDLE).\n");
 	#endif 
 
 	PI_Broadcast(toAllWorkers,"%^d",W,position);
@@ -489,24 +610,79 @@ int main(int argc,char **argv){
 	and compare to number of records found by main*/
 	for (i=0;i<W;i++){
 
+		#ifdef DEBUGs
+		printf("PI_Main(Master): Calling PI_Select on fromAllWorkers(CHANNEL), waiting a for worker to write.\n");
+		#endif
+		
+		done = PI_Select(fromAllWorkers);
+		
 		#ifdef DEBUG
-		printf("PI_Main calling PI_Select on fromAllWorkers expecting record and collision numbers.\n");
+		printf("PI_Main(Master): PI_Select on fromAllWorkers(CHANNEL) returned %d, calling PI_Read on fromWorker[%d] to get record and collision numbers found by worker %d. \n"
+			,done,done,done +1);
 		#endif
 
-		done = PI_Select(fromAllWorkers);
 		PI_Read(fromWorker[done],"%d %d", &recFound,&colFound);
 
 		#ifdef DEBUG
-		printf("PI_Main received a count of %d records and %d collision from worker %d\n",recFound,colFound,done+1);
+		printf("PI_Main(Master): Received a count of %d records and %d collision from worker %d through fromWorker[%d](CHANNEL)\n",recFound,colFound,done+1,done);
 		#endif
 
 		colTotal += colFound;
 		recTotal += recFound;
 	}
+	for (i=1;i<argc-1;i++){
+
+		/*Send all query requests to workers*/
+		queryNum = strtol(argv[i+1],NULL,10);
+		printf("Query num in main %d\n",queryNum);
+		PI_Broadcast(toAllWorkers,"%d %d",argc-2, queryNum);
+
+		switch(queryNum){
+			case 1:
+				/*Initialize array*/
+				for (j=0;j<14;j++){
+					for (k=0;k<12;k++){
+						colAmount[j][k][0] = 0;
+						colAmount[j][k][1] = 0;
+					}
+				}
+
+				/*Collect each workers findings for each month*/
+				for (j=0;j<W*14*12;j++){
+					done = PI_Select(fromAllWorkers);
+					PI_Read(fromWorker[done],"%d %d %^d",&year,&month, &size, &colls);
+		
+					colAmount[year-1][month-1][0] += colls[0];
+					colAmount[year-1][month-1][1] += colls[1];	
+					//(Worst Month)Fill array[14][12][2]
+				}
+				/*Print results*/
+				worst = findMax(colAmount);
+				for (j=0;j<14;j++){
+					printf("Highest non-fatal %d/%d, fatal: %d/%d\n",1999+j,worst->nonFatal[j],j+1999,worst->fatal[j]);	
+				}
+				printf("Overall worst non fatal: %d/%d, fatal: %d/%d\n",worst->total.year,worst->total.month,worst->totalF.year,worst->totalF.month);
+					
+				break;
+			case'2':
+				//Who is more likely to be killed in a collision? Men or women?
+				break;
+			case '3':
+				//Most number of vehicles crashed on which day?
+				break;
+			case '4':
+				//How many people wreck their new car, average vehicle age
+				break;
+			case '5':
+				//Where is the most likely place to have a collision?
+					break;
+		}	
+	}
+	
 
 	#ifdef DEBUG	
-	printf("PI_Main calculated %d records present in file based on file size.\n",recReal);
-	printf("PI_Main received a total of %d records and %d collisions from %d workers.\n",recTotal,colTotal,W);
+	printf("PI_Main(Master): Calculated %d records present in file based on file size.\n",recReal);
+	printf("PI_Main(Master): Received a total of %d records and %d collisions from %d workers.\n",recTotal,colTotal,W);
 	#endif
 
 	PI_StopMain(0);
