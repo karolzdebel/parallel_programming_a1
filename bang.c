@@ -592,7 +592,7 @@ int workerJob(int num, void *fileName){
 	NewWreckedCars *wrecks;
 	FILE *file;
 	Dataset *dataset;
-	int i,j,queryNum,curQuery;
+	int i,j,k,queryNum,curQuery;
 	int numPos,*position,length;
 	int ***colls;
 	int *killed;
@@ -635,7 +635,7 @@ int workerJob(int num, void *fileName){
 			case 1:
 				/*Write amount of collisions found each month*/
 				colls = collEachMonth(dataset);
-				for (i=0;i<14;i++){
+				for (k=0;k<14;k++){
 					for (j=0;j<12;j++){
 						PI_Write(fromWorker[num], "%d %d %^d",i+1,j+1,2,colls[i][j]);
 					}
@@ -659,10 +659,9 @@ int workerJob(int num, void *fileName){
 				break;
 		}
 		/*Get the next query unless last iteration*/
-		/*if (i!= queryNum-1){
+		if (i!= queryNum-1){
 			PI_Read(toWorker[num],"%d %d",&queryNum,&curQuery);
-
-		}*/
+		}
 	}	
 
 	#ifdef DEBUG
