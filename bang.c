@@ -463,12 +463,19 @@ WorstMonth *findMax(int arr[14][12][2]){
 	int i,j,index=0,max=0;
 	int maxF=0,indexF=0,maxFAll=0,maxAllF=0,maxAll=0;
 	int indexYear=0,indexMonth=0;
+	int months[12][2];
 	WorstMonth *worst = malloc(sizeof(WorstMonth));
+
+	for (i=0;i<12;i++){
+		months[i][0] = 0;
+		months[i][1] = 0;
+	}
 	
 	for (j=0;j<14;j++){
 		max = 0;
 		maxF = 0;
 		for (i=0;i<12;i++){
+
 			/*Check for worst non fatal injury month*/
 			if (arr[j][i][0] > max){
 				worst->nonFatal[j].month = i+1;
@@ -480,19 +487,27 @@ WorstMonth *findMax(int arr[14][12][2]){
 				worst->fatal[j].month = i+1;
 				worst->fatal[j].year = j+1999;
 				maxF = arr[j][i][1];
-			}
-			if (arr[j][i][0] > maxAll){
-				maxAll = arr[j][i][0];
-				worst->total.year = j+1999;
-				worst->total.month = i+1;
-			}
-			if (arr[j][i][1] > maxAllF){
-				maxAllF = arr[j][i][1];
-				worst->totalF.year = j+1999;
-				worst->totalF.month = i+1;
-			}
+			}	
+			/*Total all months*/
+			months[i][0] += arr[j][i][0];
+			months[i][1] += arr[j][i][1];
 		}
 	}
+
+	/*Find worst month total*/
+	max = maxF = 0;
+	for (i=0;i<12;i++){
+		if (months[i][0] > max){
+			max = months[i][0];
+			index = i;
+		}
+		if (months[i][1] > maxF){
+			maxF = months[i][1];
+			indexF = i;
+		}
+	}
+	worst->total.month = index;
+	worst->totalF.month = indexF;	
 
 	return worst;
 }
@@ -637,7 +652,7 @@ int workerJob(int num, void *fileName){
 				colls = collEachMonth(dataset);
 				for (k=0;k<14;k++){
 					for (j=0;j<12;j++){
-						PI_Write(fromWorker[num], "%d %d %^d",i+1,j+1,2,colls[i][j]);
+						PI_Write(fromWorker[num], "%d %d %^d",k+1,j+1,2,colls[k][j]);
 					}
 				}	
 				break;
@@ -697,9 +712,9 @@ void processQueryOne(){
 	/*Print results*/
 	worst = findMax(colAmount);
 	for (j=0;j<14;j++){
-		printf("Highest non-fatal %d/%d, fatal: %d/%d\n",worst->nonFatal[j].year,worst->nonFatal[j].month,worst->fatal[j].year,worst->fatal[j].month);	
+		printf("$Q1,%d,%d,%d\n",worst->nonFatal[j].year,worst->nonFatal[j].month,worst->fatal[j].month);	
 	}
-	printf("Overall worst non fatal: %d/%d, fatal: %d/%d\n",worst->total.year,worst->total.month,worst->totalF.year,worst->totalF.month);
+	printf("$Q1,9999,%d,%d\n",worst->total.month,worst->totalF.month);
 }
 void processQueryTwo(){
 	int done,i,men,women;
@@ -711,7 +726,8 @@ void processQueryTwo(){
 		menTotal += men;
 		womenTotal += women;	
 	}
-	printf("total men: %d, total women: %d\n",menTotal,womenTotal);
+	printf("$Q2,%d,%d,%.2f,%.2f\n",menTotal,womenTotal
+		,(double)menTotal/(menTotal+womenTotal),(double)womenTotal/(menTotal+womenTotal));
 }
 
 void processQueryThree(){
@@ -733,7 +749,7 @@ void processQueryThree(){
 			max = mostVeh[i]->total;
 		}
 	}
-	printf("Most vehicles involved in collsions %d on %d/%d/%d\n",mostVeh[index]->total,mostVeh[index]->date.year,mostVeh[index]->date.month,mostVeh[index]->date.day);
+	printf("$Q3,%d,%d,%d,%d\n",mostVeh[index]->total,mostVeh[index]->date.year,mostVeh[index]->date.month,mostVeh[index]->date.day);
 }
 
 void processQueryFour(){
@@ -751,7 +767,7 @@ void processQueryFour(){
 		wrecks->vehAgeSum += age; 
 		wrecks->totalVehs += veh;
 	}
-	printf("avg wrecked new cars: %d, avg age: %.1f\n",wrecks->totalCrashed/14,(double)wrecks->vehAgeSum/wrecks->totalVehs);
+	printf("$Q4,%d,%.1f\n",wrecks->totalCrashed/14,(double)wrecks->vehAgeSum/wrecks->totalVehs);
 }
 
 void processQueryFive(){
@@ -777,11 +793,11 @@ void processQueryFive(){
 			index = i;
 		}
 	}
-	printf("Most likely place: %d\n",locsTotal[index]);
+	printf("$Q5,%d",locsTotal[index]);
 	for (i=1;i<13;i++){
-		printf("Loc %d: %d\n",i,locsTotal[i]);
+		printf(",%d",locsTotal[i]);
 	}
-	printf("QQ:%d\n",locsTotal[9]);
+	printf(",%d\n",locsTotal[0]);
 }
 
 int main(int argc,char **argv){
