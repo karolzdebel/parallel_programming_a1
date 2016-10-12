@@ -703,12 +703,11 @@ int *countLocations(Dataset *dataset){
 
 	return locs;
 }
-#define MAX 2000
 
 int W;
-PI_PROCESS *worker[MAX];
-PI_CHANNEL *toWorker[MAX];
-PI_CHANNEL *fromWorker[MAX];
+PI_PROCESS **worker;
+PI_CHANNEL **toWorker;
+PI_CHANNEL **fromWorker;
 PI_BUNDLE *toAllWorkers;
 PI_BUNDLE *fromAllWorkers;
 
@@ -792,7 +791,7 @@ int workerJob(int num, void *fileName){
 	#ifdef DEBUG
 	printf("Worker(%d) exiting.\n",num+1);
 	#endif
-	
+
 	return 0; 
 }
 
@@ -956,16 +955,12 @@ int main(int argc,char **argv){
 	int colAmount[14][12][2];	
 
 	W = PI_Configure(&argc,&argv);	
-	
+	worker = malloc(sizeof(PI_PROCESS*)*(W-1));
+	toWorker = malloc(sizeof(PI_CHANNEL*)*(W-1));
+	fromWorker = malloc(sizeof(PI_CHANNEL*)*(W-1));
+
 	W = W-1;
-	if (W >= 1){	
-		/*Open file and count records*/
-		if ( (file = fopen(argv[1],"r")) == NULL){
-			printf("Error: File not provided or could not be opened. Exiting.");
-			return(EXIT_FAILURE);
-		}		
-		recReal = (fileSize(file)-SIZE_HEADER-SIZE_EOL)/(SIZE_RECORD+SIZE_EOL);
-		
+	if (W >= 1){		
 		/*Create each worker and channels*/
 		for (i=0;i<W;i++){
 
@@ -979,6 +974,13 @@ int main(int argc,char **argv){
 
 		PI_StartAll();
 
+		/*Open file and count records*/
+		if ( (file = fopen(argv[1],"r")) == NULL){
+			printf("Error: File not provided or could not be opened. Exiting.");
+			return(EXIT_FAILURE);
+		}
+
+		recReal = (fileSize(file)-SIZE_HEADER-SIZE_EOL)/(SIZE_RECORD+SIZE_EOL);
 		position = startPositions(file,W);
 		fclose(file);
 
@@ -1013,6 +1015,9 @@ int main(int argc,char **argv){
 
 			colTotal += colFound;
 			recTotal += recFound;
+		}
+		if (recReal != recTotal){
+			PI_Abort(0,"Record number reported by workers is invalid",__FILE__,__LINE__);
 		}
 	}
 	else{	
