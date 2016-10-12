@@ -6,8 +6,6 @@
 #include <pthread.h>
 #include "pilot.h"
 
-#define DEBUG
-
 #define SIZE_RECORD 61          //Length of a record
 #define SIZE_HEADER 145         //Lenght of a header
 #define SIZE_EOL 2              //Amount of EOL characters in each line
@@ -16,11 +14,12 @@
 #define COL_CYEAR 1             //Collision year
 #define COL_MNTH 2              //Collision month
 #define COL_DAY 3               //Collision day
-#define COL_SEV 5               //Collision severity
+#define COL_SEV 20               //Collision severity
 #define COL_VEHN 6				//Number of vehicles involved in collision
 #define COL_LOC 8               //Collision location
 #define COL_VYEAR 15            //Vehicle year involved in collision
 #define COL_SEX 17              //Gender of individual involved in collision
+#define COL_VID	13		        //Column of vehicle ID
 #define FATA 0
 #define COLL 1
 
@@ -38,6 +37,7 @@ typedef struct Record {
 	char gender;                //Gender of individual involved
 	int vehYear;                //Vehicle year involved in collision
 	int vehNum;					//Number of vehicles involved in collision
+	int vehID;					//Id of vehicle involved
 	bool death;                 //Whether the person involved in the collision died
 } Record;
 
@@ -65,9 +65,9 @@ typedef struct MostVehicles {
 }MostVehicles;
 
 typedef struct NewWreckedCars{
-	int totalVehs;
-	int totalCrashed;
-	int vehAgeSum;
+	int vehiclesInvolved;
+	int newVehiclesInvolved;
+	int vehicleAgeTotal;
 }NewWreckedCars;
 
 /******************HELPER FUNCTION DOCUMENTATION*********************/
@@ -380,15 +380,35 @@ static Record *getRecord(char *recLine){
 				break;
 
 			case COL_SEV:
-				record->death = (token[0] == '1');
+				record->death = (strcmp(token,"3") == 0);
 				break;
 			
 			case COL_VEHN:
-				record->vehNum = strtol(token,NULL,10);
+				if (token[0] == '0'){
+					record->vehNum = token[1] - '0';
+				}
+				else{
+					record->vehNum = strtol(token,NULL,10);
+				}
 
 			case COL_LOC:
-				record->location = strtol(token,NULL,10);
-
+				if (strcmp(token,"QQ") == 0){
+					record->location = 0;
+				}
+				else if (strtol(token,NULL,10) == 0){
+					record->location = -1;
+				}
+				else{
+					record->location = strtol(token,NULL,10);
+				}
+				break;
+			case COL_VID:
+				if (token[0] == '0'){
+					record->vehID = token[1] - '0';
+				}
+				else{
+					record->vehID = strtol(token,NULL,10);
+				}				
 				break;
 
 			case COL_VYEAR:
@@ -433,9 +453,18 @@ int ***collEachMonth(Dataset *dataset){
 		month = dataset->records[index]->date.month;
 		year = dataset->records[index]->date.year;
 
-		if (month > 0 && month < 13){	
+		if (month > 0 && year > 0){	
 			tally[year-1999][month-1][0]++;
-			if (dataset->records[index]->death){
+		}	
+	}
+	
+	for (i=0;i<dataset->recNum;i++){
+		
+		month = dataset->records[i]->date.month;
+		year = dataset->records[i]->date.year;
+
+		if (month > 0 && year > 0){	
+			if (dataset->records[i]->death){
 				tally[year-1999][month-1][1]++;
 			}
 		}	
@@ -491,7 +520,7 @@ static Dataset *partDataset(FILE *file, int startPos, int readLength){
 			addIndex(dataset,1);
 		}
 	} 
-	printf("Finished all diffCol's, count:%d\n",count); 
+	
 	return dataset;
 }
 
@@ -521,7 +550,6 @@ WorstMonth *findMax(int ***arr){
 		max = 0;
 		maxF = 0;
 		for (i=0;i<12;i++){
-
 			/*Check for worst non fatal injury month*/
 			if (arr[j][i][0] > max){
 				worst->nonFatal[j].month = i+1;
@@ -552,8 +580,8 @@ WorstMonth *findMax(int ***arr){
 			indexF = i;
 		}
 	}
-	worst->total.month = index;
-	worst->totalF.month = indexF;	
+	worst->total.month = index+1;
+	worst->totalF.month = indexF+1;	
 
 	return worst;
 }
@@ -603,23 +631,58 @@ MostVehicles *mostVehicles(Dataset *dataset){
 
 NewWreckedCars *countNewWrecks(Dataset *dataset){
 	NewWreckedCars *newWrecks = malloc(sizeof(NewWreckedCars));
-	int i;
-	
-	newWrecks->totalCrashed = 0;
-	newWrecks->vehAgeSum = 0;
-	newWrecks->totalVehs = 0;
+	int i,k,index,j,**idChecked,length;
+	int repeat[2];	
 
-	for (i=0;i<dataset->recNum;i++){
+	newWrecks->newVehiclesInvolved = 0;
+	newWrecks->vehicleAgeTotal = 0;
+	newWrecks->vehiclesInvolved = 0;
+
+	for (i=0;i<dataset->colNum;i++){
+		index = dataset->collisionIndex[i];	
+
+		if (i != dataset->colNum-1){
+			length = dataset->collisionIndex[i+1]-index;
+		}
+		else{
+			length = dataset->recNum - dataset->collisionIndex[i];
+		}
+	
+		idChecked = malloc(sizeof(int*)*length);
+		for (j=0;j<length;j++){
+			idChecked[j] = malloc(sizeof(int)*2);
+			idChecked[j][0] =0;
+			idChecked[j][1] = 0;
+		}
+	
+		for (j=index;j<index+length;j++){
+	
+			/*Check for repeat*/
+			repeat[0] = 0;
+			repeat[1] = 0;
+			for (k=0;k<length;k++){
+				if (dataset->records[j]->vehID == idChecked[k][0]){
+					repeat[0] = true;
+				}
+				if (dataset->records[j]->vehID == idChecked[k][1]){
+					repeat[1] = true;
+				}
+			}		    
+
+		    if ( (dataset->records[j]->vehID != 99) && (dataset->records[j]->vehID > 0)  && !repeat[0] && (dataset->records[j]->vehYear > 0) 
+			    && (dataset->records[j]->vehYear >= dataset->records[j]->date.year)){	
+			    newWrecks->newVehiclesInvolved++;
+				idChecked[j-index][0] = dataset->records[j]->vehID;	
+		    }
+		    if ( (dataset->records[j]->vehID != 99) && (dataset->records[j]->vehID > 0)  && !repeat[1] && (dataset->records[j]->vehYear > 1000)) {
+			    newWrecks->vehicleAgeTotal += dataset->records[j]->date.year - dataset->records[j]->vehYear + 1;
+				newWrecks->vehiclesInvolved ++;
+				idChecked[j-index][1] = dataset->records[j]->vehID;
+		    }	
+		}
 		
-		if (dataset->records[i]->vehYear >= dataset->records[i]->date.year){	
-			newWrecks->totalCrashed++;
-		}
-		/*Check to make sure year is rpesent*/
-		if (dataset->records[i]->vehYear > 1000){	
-			newWrecks->totalVehs++;
-			newWrecks->vehAgeSum += dataset->records[i]->date.year - dataset->records[i]->vehYear + 1;
-		}
 	}
+
 	return newWrecks;
 }
 
@@ -633,16 +696,19 @@ int *countLocations(Dataset *dataset){
 	for (i=0;i<dataset->colNum;i++){
 		index = dataset->collisionIndex[i];
 		
-		locs[dataset->records[index]->location]++;
+		if (dataset->records[index]->location >= 0){
+			locs[dataset->records[index]->location]++;
+		}	
 	}
 
 	return locs;
 }
-#define W 1
+#define MAX 2000
 
-PI_PROCESS *worker[W];
-PI_CHANNEL *toWorker[W];
-PI_CHANNEL *fromWorker[W];
+int W;
+PI_PROCESS *worker[MAX];
+PI_CHANNEL *toWorker[MAX];
+PI_CHANNEL *fromWorker[MAX];
 PI_BUNDLE *toAllWorkers;
 PI_BUNDLE *fromAllWorkers;
 
@@ -710,7 +776,7 @@ int workerJob(int num, void *fileName){
 				break;
 			case 4:
 				wrecks = countNewWrecks(dataset);
-				PI_Write(fromWorker[num],"%d %d %d",wrecks->totalCrashed,wrecks->vehAgeSum,wrecks->totalVehs);
+				PI_Write(fromWorker[num],"%d %d %d",wrecks->newVehiclesInvolved,wrecks->vehicleAgeTotal,wrecks->vehiclesInvolved);
 				break;
 			case 5:
 				locs = countLocations(dataset);
@@ -748,7 +814,7 @@ void processQueryOne(Dataset *dataset){
 	}
 
 	/*Collect each workers findings for each month*/
-	if (W>1){
+	if (W>=1){
 		for (j=0;j<W*14*12;j++){
 			done = PI_Select(fromAllWorkers);
 			PI_Read(fromWorker[done],"%d %d %^d",&year,&month, &size, &colls);
@@ -765,16 +831,16 @@ void processQueryOne(Dataset *dataset){
 	/*Print results*/
 	worst = findMax(colAmount);
 	for (j=0;j<14;j++){
-		printf("$Q1,%d,%d,%d\n",worst->nonFatal[j].year,worst->nonFatal[j].month,worst->fatal[j].month);	
+		fprintf(stdout,"$Q1,%d,%d,%d\n",worst->nonFatal[j].year,worst->nonFatal[j].month,worst->fatal[j].month);	
 	}
-	printf("$Q1,9999,%d,%d\n",worst->total.month,worst->totalF.month);
+	fprintf(stdout,"$Q1,9999,%d,%d\n",worst->total.month,worst->totalF.month);
 }
 void processQueryTwo(Dataset *dataset){
 	int done,i,men,women;
 	int menTotal=0, womenTotal=0;
 	int *gender;
 
-	if (W > 1){	
+	if (W >= 1){	
 		for (i=0;i<W;i++){
 			done = PI_Select(fromAllWorkers);
 			PI_Read(fromWorker[done],"%d %d",&men,&women);
@@ -787,7 +853,7 @@ void processQueryTwo(Dataset *dataset){
 		menTotal = gender[0];
 		womenTotal = gender[1];	
 	}
-	printf("$Q2,%d,%d,%.2f,%.2f\n",menTotal,womenTotal
+	fprintf(stdout,"$Q2,%d,%d,%.2f,%.2f\n",menTotal,womenTotal
 		,(double)menTotal/(menTotal+womenTotal),(double)womenTotal/(menTotal+womenTotal));
 }
 
@@ -800,7 +866,7 @@ void processQueryThree(Dataset *dataset){
 		mostVeh[i] = malloc(sizeof(MostVehicles));
 	}
 	
-	if (W > 1){
+	if (W >= 1){
 		for (i=0;i<W;i++){
 			done = PI_Select(fromAllWorkers);
 			PI_Read(fromWorker[done],"%d %d %d %d",&mostVeh[i]->total,&mostVeh[i]->date.year,&mostVeh[i]->date.month,&mostVeh[i]->date.day);
@@ -817,31 +883,30 @@ void processQueryThree(Dataset *dataset){
 		index = 0;
 	}
 
-	printf("$Q3,%d,%d,%d,%d\n",mostVeh[index]->total,mostVeh[index]->date.year,mostVeh[index]->date.month,mostVeh[index]->date.day);
+	fprintf(stdout,"$Q3,%d,%d,%d,%d\n",mostVeh[index]->total,mostVeh[index]->date.year,mostVeh[index]->date.month,mostVeh[index]->date.day);
 }
 
 void processQueryFour(Dataset *dataset){
 	NewWreckedCars *wrecks = malloc(sizeof(NewWreckedCars));
 	int i,done,crashes,veh,age;
 
-	wrecks->totalCrashed = 0;
-	wrecks->vehAgeSum = 0;
-	wrecks->totalVehs = 0;
+	wrecks->newVehiclesInvolved = 0;
+	wrecks->vehicleAgeTotal = 0;
+	wrecks->vehiclesInvolved = 0;
 
-	if (W > 1){
+	if (W >= 1){
 		for (i=0;i<W;i++){
 			done = PI_Select(fromAllWorkers);
 			PI_Read(fromWorker[done],"%d %d %d",&crashes,&age,&veh);
-			wrecks->totalCrashed += crashes;
-			wrecks->vehAgeSum += age; 
-			wrecks->totalVehs += veh;
+			wrecks->newVehiclesInvolved += crashes;
+			wrecks->vehicleAgeTotal += age; 
+			wrecks->vehiclesInvolved += veh;
 		}
 	}
 	else{
 		wrecks = countNewWrecks(dataset);
 	}
-
-	printf("$Q4,%d,%.1f\n",wrecks->totalCrashed/14,(double)wrecks->vehAgeSum/wrecks->totalVehs);
+	fprintf(stdout,"$Q4,%.0f,%.1f\n",(double)wrecks->newVehiclesInvolved/14,(double)wrecks->vehicleAgeTotal/wrecks->vehiclesInvolved);
 }
 
 void processQueryFive(Dataset *dataset){
@@ -852,7 +917,7 @@ void processQueryFive(Dataset *dataset){
 	locsTotal = malloc(sizeof(int)*13);
 	for (i=0;i<13;i++){ locsTotal[i] = 0; }
 	
-	if (W > 1){
+	if (W >= 1){
 		for (i=0;i<W;i++){
 			done = PI_Select(fromAllWorkers);
 			PI_Read(fromWorker[done],"%^d",&size,&locs);
@@ -873,11 +938,11 @@ void processQueryFive(Dataset *dataset){
 			index = i;
 		}
 	}
-	printf("$Q5,%d",locsTotal[index]);
+	fprintf(stdout,"$Q5,%d",index);
 	for (i=1;i<13;i++){
-		printf(",%d",locsTotal[i]);
+		fprintf(stdout,",%d",locsTotal[i]);
 	}
-	printf(",%d\n",locsTotal[0]);
+	fprintf(stdout,",%d\n",locsTotal[0]);
 }
 
 int main(int argc,char **argv){
@@ -890,10 +955,10 @@ int main(int argc,char **argv){
 	int recFound, recTotal,recReal,colFound,colTotal;
 	int colAmount[14][12][2];	
 
-	N = PI_Configure(&argc,&argv);	
-
-	if (W > 1){
-		
+	W = PI_Configure(&argc,&argv);	
+	
+	W = W-1;
+	if (W >= 1){	
 		/*Open file and count records*/
 		if ( (file = fopen(argv[1],"r")) == NULL){
 			printf("Error: File not provided or could not be opened. Exiting.");
@@ -967,7 +1032,7 @@ int main(int argc,char **argv){
 		/*Send all query requests to workers*/
 		queryNum = strtol(argv[i+1],NULL,10);
 		
-		if (W > 1){
+		if (W >= 1){
 			PI_Broadcast(toAllWorkers,"%d %d",argc-2, queryNum);
 		}
 
